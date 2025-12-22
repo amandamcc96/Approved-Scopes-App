@@ -1,4 +1,4 @@
-const API = 'http://localhost:5501/api/systems';
+const API = 'https://approved-scopes-app.onrender.com/api/systems';
 
 let systems = [];
 const list = document.getElementById('list');
