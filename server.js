@@ -81,68 +81,44 @@ app.get('/api/systems', async (req, res) => {
 
     const allRows = [];
 
-    for (const sheetName of sheetNames) {
-      // Pull grid data INCLUDING formatting
-      const result = await sheets.spreadsheets.get({
-        auth,
-        spreadsheetId: SPREADSHEET_ID,
-        ranges: [`${sheetName}!A1:Z`],
-        includeGridData: true
-      });
-
+    const result = await sheets.spreadsheets.values.get({
+  auth,
+  spreadsheetId: SPREADSHEET_ID,
+  range: `${sheetName}!A1:K2000` // adjust if you expect more than 2000 rows
+});
       const sheet = result.data.sheets && result.data.sheets[0];
       if (!sheet || !sheet.data || !sheet.data[0] || !sheet.data[0].rowData) {
         continue;
       }
 
-      const rowData = sheet.data[0].rowData;
-      if (!rowData.length) continue;
+  const rows = (result.data.values || []);
+if (!rows.length) continue;
 
-      // First row: headers (plain text)
-      const headerRow = rowData[0];
-      const headerValues = headerRow.values || [];
-      const headers = headerValues.map((cell) => (cell && cell.formattedValue) || '');
+const headers = rows[0];
+for (let i = 1; i < rows.length; i++) {
+  const row = rows[i];
+  const obj = {};
 
-      if (!headers.length) continue;
+  headers.forEach((h, colIndex) => {
+    if (!h) return;
+    obj[h] = row[colIndex] || '';
+  });
 
-      // Remaining rows: data
-      for (let i = 1; i < rowData.length; i++) {
-        const row = rowData[i];
-        if (!row || !row.values) continue;
+  const rawName =
+    obj['System Name'] ||
+    obj['ERP'] ||
+    obj['CRM'] ||
+    obj['Other System'];
 
-        const cellValues = row.values;
-        const obj = {};
+  const plainName = rawName ? String(rawName).trim() : '';
+  if (!plainName) continue;
 
-        headers.forEach((h, colIndex) => {
-          if (!h) return;
-          const cell = cellValues[colIndex] || {};
-          const html = cellToHtml(cell);
-          obj[h] = html || '';
-        });
+  const rowNumber = i + 1;
+  obj.id = `${sheetName}__${rowNumber}`;
+  obj.sheet = sheetName;
 
-        // Determine if this row has a "name" in any of the expected columns
-        const rawName =
-          obj['System Name'] ||
-          obj['ERP'] ||
-          obj['CRM'] ||
-          obj['Other System'];
-
-        const plainName = rawName
-          ? String(rawName).replace(/<[^>]*>/g, '').trim()
-          : '';
-
-        if (!plainName) {
-          continue; // skip empty rows
-        }
-
-        const rowNumber = i + 1; // +1 because Sheets rows start at 1
-
-        obj.id = `${sheetName}__${rowNumber}`;
-        obj.sheet = sheetName;
-
-        allRows.push(obj);
-      }
-    }
+  allRows.push(obj);
+}
 
     res.json(allRows);
   } catch (err) {
