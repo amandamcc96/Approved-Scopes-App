@@ -128,53 +128,57 @@ for (let i = 1; i < rows.length; i++) {
 });
 
 // POST /api/systems/:id/scope - update Approved Scopes cell (plain text)
-app.post('/api/systems/:id/scope', async (req, res) => {
+app.get('/api/systems', async (req, res) => {
   try {
     const auth = await getAuth();
-    const id = req.params.id;
-    const [sheetName, rowStr] = id.split('__');
-    const rowNumber = parseInt(rowStr, 10);
+    const sheetNames = await getSheetNames(auth);
 
-    if (!sheetName || !rowNumber) {
-      return res.status(400).json({ error: 'Invalid system id' });
-    }
+    const allRows = [];
 
-    const newScope = req.body.scope || '';
+    for (const sheetName of sheetNames) {
+      // Lightweight: values only (no formatting)
+      const result = await sheets.spreadsheets.values.get({
+        auth,
+        spreadsheetId: SPREADSHEET_ID,
+        range: `${sheetName}!A1:K2000` // covers your 11 columns
+      });
 
-    // Get header row to find "Approved Scopes"
-    const headerRes = await sheets.spreadsheets.values.get({
-      auth,
-      spreadsheetId: SPREADSHEET_ID,
-      range: `${sheetName}!A1:Z1`
-    });
+      const rows = result.data.values || [];
+      if (!rows.length) continue;
 
-    const headers = (headerRes.data.values && headerRes.data.values[0]) || [];
-    const colIndex = headers.indexOf('Approved Scopes');
+      const headers = rows[0];
+      if (!headers || !headers.length) continue;
 
-    if (colIndex === -1) {
-      return res
-        .status(500)
-        .json({ error: 'Approved Scopes column not found in sheet' });
-    }
+      for (let i = 1; i < rows.length; i++) {
+        const row = rows[i] || [];
+        const obj = {};
 
-    // Convert colIndex (0-based) to column letter (A, B, C, ...)
-    const columnLetter = String.fromCharCode('A'.charCodeAt(0) + colIndex);
-    const range = `${sheetName}!${columnLetter}${rowNumber}`;
+        headers.forEach((h, colIndex) => {
+          if (!h) return;
+          obj[h] = row[colIndex] || '';
+        });
 
-    await sheets.spreadsheets.values.update({
-      auth,
-      spreadsheetId: SPREADSHEET_ID,
-      range,
-      valueInputOption: 'RAW',
-      requestBody: {
-        values: [[newScope]]
+        const rawName =
+          obj['System Name'] ||
+          obj['ERP'] ||
+          obj['CRM'] ||
+          obj['Other System'];
+
+        const plainName = rawName ? String(rawName).trim() : '';
+        if (!plainName) continue;
+
+        const rowNumber = i + 1; // sheet rows are 1-indexed
+        obj.id = `${sheetName}__${rowNumber}`;
+        obj.sheet = sheetName;
+
+        allRows.push(obj);
       }
-    });
+    }
 
-    res.json({ ok: true });
+    res.json(allRows);
   } catch (err) {
-    console.error('Error in POST /api/systems/:id/scope', err);
-    res.status(500).json({ error: 'Failed to update Approved Scopes' });
+    console.error('Error in GET /api/systems', err);
+    res.status(500).json({ error: 'Failed to load systems' });
   }
 });
 
