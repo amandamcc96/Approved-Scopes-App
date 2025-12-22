@@ -1,6 +1,5 @@
 require('dotenv').config();
-console.log('CWD =', process.cwd());
-console.log('process.env.PORT =', process.env.PORT);
+
 const express = require('express');
 const cors = require('cors');
 const { google } = require('googleapis');
@@ -13,7 +12,7 @@ app.use(express.json());
 
 const SPREADSHEET_ID = process.env.GOOGLE_SHEET_ID;
 if (!SPREADSHEET_ID) {
-  console.warn('Warning: GOOGLE_SHEET_ID is not set in your .env file.');
+  console.warn('Warning: GOOGLE_SHEET_ID is not set.');
 }
 
 const sheets = google.sheets('v4');
@@ -27,39 +26,7 @@ function getAuth() {
   );
 }
 
-// Helper to convert a single cell (with possible rich text) into HTML
-function cellToHtml(cell) {
-  if (!cell) return '';
-
-  const text = cell.formattedValue || '';
-  const runs = cell.textFormatRuns;
-
-  if (!runs || runs.length === 0) {
-    // No rich text segments, just return the text
-    return text;
-  }
-
-  let html = '';
-  for (let i = 0; i < runs.length; i++) {
-    const start = runs[i].startIndex || 0;
-    const end = runs[i + 1]?.startIndex ?? text.length;
-    const segment = text.substring(start, end);
-    const format = runs[i].format || {};
-
-    let wrapped = segment;
-
-    // Apply formatting tags; order doesn't matter much here
-    if (format.bold) wrapped = `<strong>${wrapped}</strong>`;
-    if (format.italic) wrapped = `<em>${wrapped}</em>`;
-    if (format.underline) wrapped = `<u>${wrapped}</u>`;
-
-    html += wrapped;
-  }
-
-  return html;
-}
-
-// Helper to get sheet names
+// Helper to get all sheet/tab names in the spreadsheet
 async function getSheetNames(auth) {
   const res = await sheets.spreadsheets.get({
     auth,
@@ -73,61 +40,7 @@ async function getSheetNames(auth) {
     .filter(Boolean);
 }
 
-// GET /api/systems - list all systems from all sheets, with formatted cell HTML
-app.get('/api/systems', async (req, res) => {
-  try {
-    const auth = await getAuth();
-    const sheetNames = await getSheetNames(auth);
-
-    const allRows = [];
-
-    const result = await sheets.spreadsheets.values.get({
-  auth,
-  spreadsheetId: SPREADSHEET_ID,
-  range: `${sheetName}!A1:K2000` // adjust if you expect more than 2000 rows
-});
-      const sheet = result.data.sheets && result.data.sheets[0];
-      if (!sheet || !sheet.data || !sheet.data[0] || !sheet.data[0].rowData) {
-        continue;
-      }
-
-  const rows = (result.data.values || []);
-if (!rows.length) continue;
-
-const headers = rows[0];
-for (let i = 1; i < rows.length; i++) {
-  const row = rows[i];
-  const obj = {};
-
-  headers.forEach((h, colIndex) => {
-    if (!h) return;
-    obj[h] = row[colIndex] || '';
-  });
-
-  const rawName =
-    obj['System Name'] ||
-    obj['ERP'] ||
-    obj['CRM'] ||
-    obj['Other System'];
-
-  const plainName = rawName ? String(rawName).trim() : '';
-  if (!plainName) continue;
-
-  const rowNumber = i + 1;
-  obj.id = `${sheetName}__${rowNumber}`;
-  obj.sheet = sheetName;
-
-  allRows.push(obj);
-}
-
-    res.json(allRows);
-  } catch (err) {
-    console.error('Error in GET /api/systems', err);
-    res.status(500).json({ error: 'Failed to load systems' });
-  }
-});
-
-// POST /api/systems/:id/scope - update Approved Scopes cell (plain text)
+// GET /api/systems - list all systems from all sheets (values-only)
 app.get('/api/systems', async (req, res) => {
   try {
     const auth = await getAuth();
@@ -136,18 +49,17 @@ app.get('/api/systems', async (req, res) => {
     const allRows = [];
 
     for (const sheetName of sheetNames) {
-      // Lightweight: values only (no formatting)
       const result = await sheets.spreadsheets.values.get({
         auth,
         spreadsheetId: SPREADSHEET_ID,
-        range: `${sheetName}!A1:K2000` // covers your 11 columns
+        range: `${sheetName}!A1:K2000` // A-K covers your 11 columns
       });
 
       const rows = result.data.values || [];
       if (!rows.length) continue;
 
-      const headers = rows[0];
-      if (!headers || !headers.length) continue;
+      const headers = rows[0] || [];
+      if (!headers.length) continue;
 
       for (let i = 1; i < rows.length; i++) {
         const row = rows[i] || [];
@@ -167,7 +79,7 @@ app.get('/api/systems', async (req, res) => {
         const plainName = rawName ? String(rawName).trim() : '';
         if (!plainName) continue;
 
-        const rowNumber = i + 1; // sheet rows are 1-indexed
+        const rowNumber = i + 1; // Google Sheets rows are 1-indexed
         obj.id = `${sheetName}__${rowNumber}`;
         obj.sheet = sheetName;
 
@@ -179,6 +91,54 @@ app.get('/api/systems', async (req, res) => {
   } catch (err) {
     console.error('Error in GET /api/systems', err);
     res.status(500).json({ error: 'Failed to load systems' });
+  }
+});
+
+// POST /api/systems/:id/scope - update Approved Scopes cell (plain text)
+app.post('/api/systems/:id/scope', async (req, res) => {
+  try {
+    const auth = await getAuth();
+    const id = req.params.id;
+
+    const [sheetName, rowStr] = id.split('__');
+    const rowNumber = parseInt(rowStr, 10);
+
+    if (!sheetName || !rowNumber) {
+      return res.status(400).json({ error: 'Invalid system id' });
+    }
+
+    const newScope = req.body.scope || '';
+
+    // Read header row to find the "Approved Scopes" column index
+    const headerRes = await sheets.spreadsheets.values.get({
+      auth,
+      spreadsheetId: SPREADSHEET_ID,
+      range: `${sheetName}!A1:K1`
+    });
+
+    const headers = (headerRes.data.values && headerRes.data.values[0]) || [];
+    const colIndex = headers.indexOf('Approved Scopes');
+
+    if (colIndex === -1) {
+      return res.status(500).json({ error: 'Approved Scopes column not found' });
+    }
+
+    // Convert colIndex (0-based) to column letter (A-K)
+    const columnLetter = String.fromCharCode('A'.charCodeAt(0) + colIndex);
+    const range = `${sheetName}!${columnLetter}${rowNumber}`;
+
+    await sheets.spreadsheets.values.update({
+      auth,
+      spreadsheetId: SPREADSHEET_ID,
+      range,
+      valueInputOption: 'RAW',
+      requestBody: { values: [[newScope]] }
+    });
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Error in POST /api/systems/:id/scope', err);
+    res.status(500).json({ error: 'Failed to update Approved Scopes' });
   }
 });
 
