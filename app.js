@@ -13,6 +13,7 @@ const HEADERS = [
   'Pricing',
   'Next Steps',
   'Notes',
+  'Observations',
   'API Docs',
   'Approved Scopes',
   'Approval Date',
@@ -142,7 +143,31 @@ function showDetails(system) {
       details.appendChild(card);
       return;
     }
+// Observations — editable field
+if (header === 'Observations') {
+  const textarea = document.createElement('textarea');
+  textarea.value = plain; // edit plain text
+  textarea.placeholder = 'Add observations here...';
+  textarea.style.width = '100%';
+  textarea.style.minHeight = '60px';
+  textarea.style.fontSize = '12px';
+  textarea.style.resize = 'vertical';
+  textarea.style.boxSizing = 'border-box';
+  textarea.style.padding = '4px';
+  card.appendChild(textarea);
 
+  const saveBtn = document.createElement('button');
+  saveBtn.textContent = 'Save observations';
+  saveBtn.style.marginTop = '6px';
+  saveBtn.style.fontSize = '11px';
+  saveBtn.style.padding = '4px 8px';
+  saveBtn.style.cursor = 'pointer';
+  saveBtn.onclick = () => saveObservations(system, textarea.value);
+  card.appendChild(saveBtn);
+
+  details.appendChild(card);
+  return;
+}
     // 2) Pre-approved? — simple Yes/No with optional checkmark
     if (header === 'Pre-approved?') {
       const row = document.createElement('div');
