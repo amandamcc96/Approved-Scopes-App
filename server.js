@@ -122,7 +122,49 @@ app.post('/api/systems/:id/scope', async (req, res) => {
     if (colIndex === -1) {
       return res.status(500).json({ error: 'Approved Scopes column not found' });
     }
+app.post('/api/systems/:id/observations', async (req, res) => {
+  try {
+    const auth = await getAuth();
+    const id = req.params.id;
 
+    const [sheetName, rowStr] = id.split('__');
+    const rowNumber = parseInt(rowStr, 10);
+    if (!sheetName || !rowNumber) {
+      return res.status(400).json({ error: 'Invalid system id' });
+    }
+
+    const newObs = req.body.observations || '';
+
+    const headerRes = await sheets.spreadsheets.values.get({
+      auth,
+      spreadsheetId: SPREADSHEET_ID,
+      range: `${sheetName}!A1:Z1`
+    });
+
+    const headers = (headerRes.data.values && headerRes.data.values[0]) || [];
+    const colIndex = headers.indexOf('Observations');
+
+    if (colIndex === -1) {
+      return res.status(500).json({ error: 'Observations column not found' });
+    }
+
+    const columnLetter = String.fromCharCode('A'.charCodeAt(0) + colIndex);
+    const range = `${sheetName}!${columnLetter}${rowNumber}`;
+
+    await sheets.spreadsheets.values.update({
+      auth,
+      spreadsheetId: SPREADSHEET_ID,
+      range,
+      valueInputOption: 'RAW',
+      requestBody: { values: [[newObs]] }
+    });
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Error in POST /api/systems/:id/observations', err);
+    res.status(500).json({ error: 'Failed to update Observations' });
+  }
+});
     // Convert colIndex (0-based) to column letter (A-K)
     const columnLetter = String.fromCharCode('A'.charCodeAt(0) + colIndex);
     const range = `${sheetName}!${columnLetter}${rowNumber}`;
