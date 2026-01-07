@@ -106,53 +106,7 @@ app.post('/api/systems/:id/scope', async (req, res) => {
     if (!sheetName || !rowNumber) {
       return res.status(400).json({ error: 'Invalid system id' });
     }
-// POST /api/systems/:id/notes - update Notes cell (plain text)
-app.post('/api/systems/:id/notes', async (req, res) => {
-  try {
-    const auth = await getAuth();
-    const id = req.params.id;
 
-    const [sheetName, rowStr] = id.split('__');
-    const rowNumber = parseInt(rowStr, 10);
-
-    if (!sheetName || !rowNumber) {
-      return res.status(400).json({ error: 'Invalid system id' });
-    }
-
-    const newNotes = req.body.notes || '';
-
-    // Read header row to find the "Notes" column index
-    const headerRes = await sheets.spreadsheets.values.get({
-      auth,
-      spreadsheetId: SPREADSHEET_ID,
-      range: `${sheetName}!A1:K1`
-    });
-
-    const headers = (headerRes.data.values && headerRes.data.values[0]) || [];
-    const colIndex = headers.indexOf('Notes');
-
-    if (colIndex === -1) {
-      return res.status(500).json({ error: 'Notes column not found' });
-    }
-
-    // Convert colIndex (0-based) to column letter (A-K)
-    const columnLetter = String.fromCharCode('A'.charCodeAt(0) + colIndex);
-    const range = `${sheetName}!${columnLetter}${rowNumber}`;
-
-    await sheets.spreadsheets.values.update({
-      auth,
-      spreadsheetId: SPREADSHEET_ID,
-      range,
-      valueInputOption: 'RAW',
-      requestBody: { values: [[newNotes]] }
-    });
-
-    res.json({ ok: true });
-  } catch (err) {
-    console.error('Error in POST /api/systems/:id/notes', err);
-    res.status(500).json({ error: 'Failed to update Notes' });
-  }
-});
     const newScope = req.body.scope || '';
 
     // Read header row to find the "Approved Scopes" column index
