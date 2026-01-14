@@ -1,5 +1,5 @@
-const API = 'https://approved-scopes-app.onrender.com/api/systems';
-
+const API_BASE = 'https://approved-scopes-app.onrender.com';
+const API_SYSTEMS = `${API_BASE}/api/systems`;
 let systems = [];
 const list = document.getElementById('list');
 const details = document.getElementById('details');
@@ -27,7 +27,7 @@ function stripTags(str) {
 }
 
 // Load all systems from all sheets (ERP / CRM / Other Systems)
-fetch(API)
+fetch(API_SYSTEMS)
   .then((r) => r.json())
   .then((data) => {
     systems = data || [];
@@ -310,7 +310,7 @@ function saveScope(system, newScope) {
     return;
   }
 
-  const url = `${API}/${encodeURIComponent(system.id)}/scope`;
+const url = `${API_SYSTEMS}/${encodeURIComponent(system.id)}/scope`;
 
   fetch(url, {
     method: 'POST',
@@ -325,5 +325,29 @@ function saveScope(system, newScope) {
     .catch((err) => {
       console.error(err);
       alert('Error saving scopes');
+    });
+}
+// Save "Observations" back to the sheet via backend
+function saveObservations(system, newObservations) {
+  if (!system || !system.id) {
+    alert('Cannot save: missing system id from API');
+    return;
+  }
+
+  const url = `${API_SYSTEMS}/${encodeURIComponent(system.id)}/observations`;
+
+  fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ observations: newObservations })
+  })
+    .then((res) => {
+      if (!res.ok) throw new Error('Request failed');
+      system['Observations'] = newObservations;
+      alert('Observations saved');
+    })
+    .catch((err) => {
+      console.error(err);
+      alert('Error saving observations');
     });
 }
