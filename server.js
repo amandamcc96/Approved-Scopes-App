@@ -117,7 +117,9 @@ app.post('/api/systems/:id/scope', async (req, res) => {
     });
 
     const headers = (headerRes.data.values && headerRes.data.values[0]) || [];
-    const colIndex = headers.indexOf('Approved Scopes');
+  const colIndex = headers.findIndex(
+  (h) => String(h || '').trim() === 'Approved Scopes'
+);
 
     if (colIndex === -1) {
       return res.status(500).json({ error: 'Approved Scopes column not found' });
@@ -167,7 +169,9 @@ app.post('/api/systems/:id/observations', async (req, res) => {
     });
 
     const headers = (headerRes.data.values && headerRes.data.values[0]) || [];
-    const colIndex = headers.indexOf('Observations');
+  const colIndex = headers.findIndex(
+  (h) => String(h || '').trim() === 'Observations'
+);
 
     if (colIndex === -1) {
       return res.status(500).json({ error: 'Observations column not found' });
